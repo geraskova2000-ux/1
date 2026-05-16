@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Some / Any Head Tilt Game</title>
+
+  <!-- MediaPipe libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #f6f2ff, #e8f7ff);
+      min-height: 100vh;
+      overflow: hidden;
+      color: #222;
+    }
+
+    .game-screen {
+      width: 100vw;
+      height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr 1.4fr 1fr;
+      grid-template-rows: auto 1fr auto;
+      gap: 20px;
+      padding: 24px;
+    }
+
+    .header {
+      grid-column: 1 / 4;
+      text-align: center;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 36px;
+    }
+
+    .subtitle {
+      margin-top: 8px;
+      font-size: 18px;
+      color: #555;
+    }
+
+    .choice {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 28px;
+      font-size: 72px;
+      font-weight: 900;
+      letter-spacing: 4px;
+      background: rgba(255, 255, 255, 0.65);
+      border: 5px solid rgba(255, 255, 255, 0.9);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.12);
+      transition: 0.25s ease;
+      user-select: none;
+    }
+
+    .choice.active {
+      transform: scale(1.05);
+      background: #fff6b8;
+      border-color: #ffcf4a;
+    }
+
+    .choice.correct {
+      background: #c9ffd6;
+      border-color: #30c85a;
+    }
+
+    .choice.wrong {
+      background: #ffd0d0;
+      border-color: #ff4d4d;
+    }
+
+    .left-choice {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    .right-choice {
+      grid-column: 3;
+      grid-row: 2;
+    }
+
+    .camera-area {
+      grid-column: 2;
+      grid-row: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+    }
+
+    .video-wrapper {
+      position: relative;
+      width: min(520px, 100%);
+      aspect-ratio: 4 / 3;
+      border-radius: 32px;
+      overflow: hidden;
+      background: #111;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.18);
+      border: 6px solid white;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+    }
+
+    .tilt-indicator {
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 8px 16px;
+      background: rgba(255, 255, 255, 0.9);
+      border-radius: 999px;
+      font-weight: bold;
+      font-size: 16px;
+    }
+
+    .start-panel {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px;
+      background: rgba(255, 255, 255, 0.92);
+      z-index: 5;
+    }
+
+    .start-panel.hidden {
+      display: none;
+    }
+
+    button {
+      border: none;
+      border-radius: 999px;
+      padding: 15px 30px;
+      font-size: 20px;
+      font-weight: bold;
+      cursor: pointer;
+      background: #6c5ce7;
+      color: white;
+      box-shadow: 0 10px 24px rgba(108, 92, 231, 0.35);
+      transition: 0.2s ease;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      background: #5b4bd6;
+    }
+
+    .info-row {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    .sentence-area {
+      grid-column: 1 / 4;
+      grid-row: 3;
+      min-height: 150px;
+      background: rgba(255, 255, 255, 0.82);
+      border-radius: 28px;
+      padding: 26px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.12);
+    }
+
+    .sentence {
+      font-size: clamp(30px, 4vw, 56px);
+      font-weight: 900;
+      margin-bottom: 12px;
+    }
+
+    .feedback {
+      min-height: 34px;
+      font-size: 26px;
+      font-weight: bold;
+    }
+
+    .feedback.good {
+      color: #15953a;
+    }
+
+    .feedback.bad {
+      color: #d62828;
+    }
+
+    .small-note {
+      font-size: 14px;
+      color: #666;
+      max-width: 520px;
+      line-height: 1.4;
+    }
+
+    @media (max-width: 850px) {
+      body {
+        overflow-y: auto;
+      }
+
+      .game-screen {
+        min-height: 100vh;
+        height: auto;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto auto auto auto;
+      }
+
+      .header {
+        grid-column: 1 / 3;
+      }
+
+      .camera-area {
+        grid-column: 1 / 3;
+        grid-row: 2;
+      }
+
+      .left-choice {
+        grid-column: 1;
+        grid-row: 3;
+        min-height: 120px;
+        font-size: 48px;
+      }
+
+      .right-choice {
+        grid-column: 2;
+        grid-row: 3;
+        min-height: 120px;
+        font-size: 48px;
+      }
+
+      .sentence-area {
+        grid-column: 1 / 3;
+        grid-row: 4;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="game-screen">
+    <section class="header">
+      <h1>Some / Any Head Tilt Game</h1>
+      <div class="subtitle">Tilt your head left for ANY. Tilt your head right for SOME.</div>
+    </section>
+
+    <section id="anyBox" class="choice left-choice">ANY</section>
+
+    <section class="camera-area">
+      <div class="video-wrapper">
+        <video id="video" autoplay playsinline muted></video>
+        <div id="tiltIndicator" class="tilt-indicator">Waiting...</div>
+
+        <div id="startPanel" class="start-panel">
+          <h2>Ready?</h2>
+          <p>Allow camera access. Then tilt your head to choose the answer.</p>
+          <button id="startButton">Start Game</button>
+          <p class="small-note">
+            The camera is used by your browser for head movement detection. For a classroom/homework version, warn students and parents before using camera-based games.
+          </p>
+        </div>
+      </div>
+
+      <div class="info-row">
+        <span>Score: <span id="score">0</span></span>
+        <span>Question: <span id="questionNumber">1</span>/<span id="totalQuestions">0</span></span>
+      </div>
+    </section>
+
+    <section id="someBox" class="choice right-choice">SOME</section>
+
+    <section class="sentence-area">
+      <div id="sentence" class="sentence">Press Start</div>
+      <div id="feedback" class="feedback"></div>
+    </section>
+  </main>
+
+  <script>
+    // Edit the sentences here.
+    // answer must be "some" or "any".
+    // SETTINGS
+    // If the game chooses the wrong side, change this to true or false.
+    const SWAP_LEFT_RIGHT = true;
+
+    // If the game reacts too easily, increase this number: 0.04, 0.05, 0.06.
+    // If it barely reacts, decrease it: 0.025, 0.02.
+    const TILT_THRESHOLD = 0.05;
+
+    // How long the student must hold the head tilt before the answer is chosen.
+    // Bigger number = slower, more stable choice.
+    const STABLE_FRAMES_TO_ANSWER = 20;
+
+    const questions = [
+      { sentence: "Do you have ___ water?", answer: "any" },
+      { sentence: "I have ___ apples.", answer: "some" },
+      { sentence: "We don't have ___ milk.", answer: "any" },
+      { sentence: "There are ______ students in the classroom.", answer: "some" },
+      { sentence: "There aren't ___ chairs.", answer: "any" },
+      { sentence: "I need ___ help.", answer: "some" },
+      { sentence: "Are there ___ books on the table?", answer: "any" },
+      { sentence: "She has ___ nice photos.", answer: "some" },
+      { sentence: "We haven't got ___ homework.", answer: "any" },
+      { sentence: "There is ______ food in the kitchen.", answer: "some" }
+    ];
+
+    const videoElement = document.getElementById("video");
+    const startButton = document.getElementById("startButton");
+    const startPanel = document.getElementById("startPanel");
+    const sentenceElement = document.getElementById("sentence");
+    const feedbackElement = document.getElementById("feedback");
+    const scoreElement = document.getElementById("score");
+    const questionNumberElement = document.getElementById("questionNumber");
+    const totalQuestionsElement = document.getElementById("totalQuestions");
+    const anyBox = document.getElementById("anyBox");
+    const someBox = document.getElementById("someBox");
+    const tiltIndicator = document.getElementById("tiltIndicator");
+
+    let currentQuestionIndex = 0;
+    let score = 0;
+    let isAnswerLocked = false;
+    let lastChoice = null;
+    let stableFrames = 0;
+    let camera = null;
+
+    totalQuestionsElement.textContent = questions.length;
+
+    function showQuestion() {
+      const current = questions[currentQuestionIndex];
+      sentenceElement.textContent = current.sentence;
+      feedbackElement.textContent = "";
+      feedbackElement.className = "feedback";
+      questionNumberElement.textContent = currentQuestionIndex + 1;
+      clearChoiceStyles();
+      isAnswerLocked = false;
+      lastChoice = null;
+      stableFrames = 0;
+    }
+
+    function clearChoiceStyles() {
+      anyBox.className = "choice left-choice";
+      someBox.className = "choice right-choice";
+    }
+
+    function setActiveChoice(choice) {
+      clearChoiceStyles();
+      if (choice === "any") anyBox.classList.add("active");
+      if (choice === "some") someBox.classList.add("active");
+    }
+
+    function checkAnswer(choice) {
+      if (isAnswerLocked) return;
+      isAnswerLocked = true;
+
+      const correctAnswer = questions[currentQuestionIndex].answer;
+      const isCorrect = choice === correctAnswer;
+
+      clearChoiceStyles();
+
+      if (choice === "any") anyBox.classList.add(isCorrect ? "correct" : "wrong");
+      if (choice === "some") someBox.classList.add(isCorrect ? "correct" : "wrong");
+
+      if (!isCorrect) {
+        if (correctAnswer === "any") anyBox.classList.add("correct");
+        if (correctAnswer === "some") someBox.classList.add("correct");
+      }
+
+      if (isCorrect) {
+        score++;
+        scoreElement.textContent = score;
+        feedbackElement.textContent = "Correct!";
+        feedbackElement.className = "feedback good";
+      } else {
+        feedbackElement.textContent = `Try again! Correct answer: ${correctAnswer.toUpperCase()}`;
+        feedbackElement.className = "feedback bad";
+      }
+
+      setTimeout(() => {
+        currentQuestionIndex++;
+
+        if (currentQuestionIndex >= questions.length) {
+          endGame();
+        } else {
+          showQuestion();
+        }
+      }, 1400);
+    }
+
+    function endGame() {
+      sentenceElement.textContent = `Game over! Your score: ${score}/${questions.length}`;
+      feedbackElement.textContent = "Press Start to play again.";
+      feedbackElement.className = "feedback good";
+      startPanel.classList.remove("hidden");
+      startButton.textContent = "Play Again";
+      isAnswerLocked = true;
+    }
+
+    function resetGame() {
+      currentQuestionIndex = 0;
+      score = 0;
+      scoreElement.textContent = score;
+      startPanel.classList.add("hidden");
+      showQuestion();
+    }
+
+    function getHeadTilt(faceLandmarks) {
+      // MediaPipe Face Mesh landmark indexes:
+      // 33 = left eye outer corner, 263 = right eye outer corner.
+      const leftEye = faceLandmarks[33];
+      const rightEye = faceLandmarks[263];
+
+      // Because the video is mirrored visually, the direction may feel reversed on some devices.
+      // If it feels wrong, swap "some" and "any" below.
+      const deltaY = rightEye.y - leftEye.y;
+
+      if (deltaY > TILT_THRESHOLD) {
+        return SWAP_LEFT_RIGHT ? "any" : "some";
+      }
+
+      if (deltaY < -TILT_THRESHOLD) {
+        return SWAP_LEFT_RIGHT ? "some" : "any";
+      }
+
+      return "center";
+    }
+
+    function handleChoice(choice) {
+      if (isAnswerLocked || choice === "center") return;
+
+      setActiveChoice(choice);
+
+      if (lastChoice === choice) {
+        stableFrames++;
+      } else {
+        lastChoice = choice;
+        stableFrames = 1;
+      }
+
+      // Student must hold the tilt for several frames.
+      // Increase this number if the game reacts too fast.
+      if (stableFrames >= STABLE_FRAMES_TO_ANSWER) {
+        checkAnswer(choice);
+      }
+    }
+
+    function onResults(results) {
+      if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+        tiltIndicator.textContent = "No face detected";
+        return;
+      }
+
+      const faceLandmarks = results.multiFaceLandmarks[0];
+      const tilt = getHeadTilt(faceLandmarks);
+
+      if (tilt === "some") {
+        tiltIndicator.textContent = "RIGHT → SOME";
+      } else if (tilt === "any") {
+        tiltIndicator.textContent = "LEFT → ANY";
+      } else {
+        tiltIndicator.textContent = "CENTER";
+        lastChoice = null;
+        stableFrames = 0;
+        if (!isAnswerLocked) clearChoiceStyles();
+      }
+
+      handleChoice(tilt);
+    }
+
+    async function startCameraAndGame() {
+      resetGame();
+
+      const faceMesh = new FaceMesh({
+        locateFile: (file) => {
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+        }
+      });
+
+      faceMesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: false,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+
+      faceMesh.onResults(onResults);
+
+      camera = new Camera(videoElement, {
+        onFrame: async () => {
+          await faceMesh.send({ image: videoElement });
+        },
+        width: 640,
+        height: 480
+      });
+
+      try {
+        await camera.start();
+        tiltIndicator.textContent = "CENTER";
+      } catch (error) {
+        console.error(error);
+        startPanel.classList.remove("hidden");
+        sentenceElement.textContent = "Camera error";
+        feedbackElement.textContent = "Please allow camera access and open the game through HTTPS or localhost.";
+        feedbackElement.className = "feedback bad";
+      }
+    }
+
+    startButton.addEventListener("click", startCameraAndGame);
+  </script>
+</body>
+</html>
